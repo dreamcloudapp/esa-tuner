@@ -1,4 +1,4 @@
-package com.dreamcloud.esa_tuner.cli;
+package com.dreamcloud.esa_tuner;
 
 import com.dreamcloud.esa_tuner.DocumentPair;
 import com.opencsv.CSVWriter;
@@ -19,7 +19,6 @@ public class DocumentPairCsvWriter {
     public void writePairs(ArrayList<DocumentPair> documentPairs) throws IOException {
         Writer fileWriter = new FileWriter(outputFile);
         CSVWriter writer = new CSVWriter(fileWriter);
-        writer.writeNext(new String[] {"doc1", "doc2", "score"});
         for (DocumentPair documentPair: documentPairs) {
             writer.writeNext(new String[]{documentPair.getDoc1(), documentPair.getDoc2(), String.valueOf(documentPair.getScore())});
         }

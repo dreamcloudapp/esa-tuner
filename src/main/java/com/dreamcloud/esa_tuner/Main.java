@@ -16,7 +16,6 @@ import com.dreamcloud.esa_score.analysis.TfIdfStrategyFactory;
 import com.dreamcloud.esa_score.analysis.strategy.TfIdfStrategy;
 import com.dreamcloud.esa_score.cli.FileSystemScoringReader;
 import com.dreamcloud.esa_score.cli.TfIdfOptionsReader;
-import com.dreamcloud.esa_tuner.cli.DocumentPairCsvWriter;
 import com.dreamcloud.esa_tuner.cli.TuningOptionsReader;
 import org.apache.commons.cli.*;
 import org.apache.lucene.analysis.Tokenizer;
@@ -24,9 +23,11 @@ import org.apache.lucene.analysis.standard.StandardTokenizer;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Map;
 
 public class Main {
     private static String SPEARMAN_OUT = "spearman-out";
+    private static String SPEARMAN_COMPARE = "spearman-compare";
 
     public static void main(String[] args) {
         Options options = new Options();
@@ -50,6 +51,11 @@ public class Main {
         Option spearmanOutOption = new Option(null, SPEARMAN_OUT, true, "output CSV file of spearman correlations");
         spearmanOutOption.setRequired(false);
         options.addOption(spearmanOutOption);
+
+        Option spearmanCompareOption = new Option(null, SPEARMAN_COMPARE, true, "spearman csv 1, spearman csv 2");
+        spearmanCompareOption.setRequired(false);
+        spearmanCompareOption.setArgs(2);
+        options.addOption(spearmanCompareOption);
 
         //Pearson correlations to get tool p-value
         Option pearsonOption = new Option(null, "pearson", true, "correlation file [document file] / Calculates Pearson correlations to get the p-value of the tool");
@@ -128,6 +134,21 @@ public class Main {
                 System.out.println("----------------------------------------");
                 System.out.println("p-value:\t" + calculator.getPearsonCorrelation(similarityTool));
                 System.out.println("----------------------------------------");
+            }
+
+            else if (cli.hasOption(SPEARMAN_COMPARE)) {
+                //Compare two spearman correlations to analyze the difference
+                File spearman1 = new File(cli.getOptionValues(SPEARMAN_COMPARE)[0]);
+                File spearman2 = new File(cli.getOptionValues(SPEARMAN_COMPARE)[1]);
+
+                ArrayList<DocumentPair> spearman1Scores = DocumentPairCsvReader.readDocumentPairs(spearman1);
+                ArrayList<DocumentPair> spearman2Scores = DocumentPairCsvReader.readDocumentPairs(spearman2);
+
+                SpearmanComparison spearmanComparison = new SpearmanComparison(spearman1Scores, spearman2Scores);
+                Map<String, Integer> sortedScoreDiffs = spearmanComparison.getDocsByRankDiff();
+                for (String wordPair: sortedScoreDiffs.keySet()) {
+                    System.out.println(wordPair + ": " + sortedScoreDiffs.get(wordPair));
+                }
             }
 
             else if (cli.hasOption("tune")) {
