@@ -11,10 +11,6 @@ public class DocumentPair {
         this.score = score;
     }
 
-    public DocumentPair() {
-
-    }
-
     public String getDoc1() {
         return doc1;
     }

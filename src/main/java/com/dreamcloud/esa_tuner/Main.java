@@ -16,16 +16,18 @@ import com.dreamcloud.esa_score.analysis.TfIdfStrategyFactory;
 import com.dreamcloud.esa_score.analysis.strategy.TfIdfStrategy;
 import com.dreamcloud.esa_score.cli.FileSystemScoringReader;
 import com.dreamcloud.esa_score.cli.TfIdfOptionsReader;
+import com.dreamcloud.esa_tuner.cli.DocumentPairCsvWriter;
 import com.dreamcloud.esa_tuner.cli.TuningOptionsReader;
 import org.apache.commons.cli.*;
 import org.apache.lucene.analysis.Tokenizer;
-import org.apache.lucene.analysis.wikipedia.WikipediaTokenizer;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
 
 import java.io.File;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
 
 public class Main {
+    private static String SPEARMAN_OUT = "spearman-out";
+
     public static void main(String[] args) {
         Options options = new Options();
 
@@ -44,6 +46,10 @@ public class Main {
         Option spearmanOption = new Option(null, "spearman", true, "correlation file / Calculates Spearman correlations to get the p-value of the tool");
         spearmanOption.setRequired(false);
         options.addOption(spearmanOption);
+
+        Option spearmanOutOption = new Option(null, SPEARMAN_OUT, true, "output CSV file of spearman correlations");
+        spearmanOutOption.setRequired(false);
+        options.addOption(spearmanOutOption);
 
         //Pearson correlations to get tool p-value
         Option pearsonOption = new Option(null, "pearson", true, "correlation file [document file] / Calculates Pearson correlations to get the p-value of the tool");
@@ -67,15 +73,10 @@ public class Main {
             TfIdfOptions tfIdfOptions = tfIdfOptionsReader.getOptions(cli);
             fileSystemScoringReader.parseOptions(cli);
 
-            //Just for Wikipedia
-            Set<String> stopTokenTypes = new HashSet<>();
-            stopTokenTypes.add(WikipediaTokenizer.EXTERNAL_LINK_URL);
-            stopTokenTypes.add(WikipediaTokenizer.EXTERNAL_LINK);
-            stopTokenTypes.add(WikipediaTokenizer.CITATION);
-            analyzerOptions.setStopTokenTypes(stopTokenTypes);
+            //Plain text tokenizer
             analyzerOptions.setTokenizerFactory(new TokenizerFactory() {
                 public Tokenizer getTokenizer() {
-                    return new WikipediaTokenizer();
+                    return new StandardTokenizer();
                 }
             });
 
@@ -91,11 +92,25 @@ public class Main {
                     spearman = "./src/data/en-wordsim353.csv";
                 }
 
+                File outputFile = null;
+                if (cli.hasOption(SPEARMAN_OUT)) {
+                    outputFile = new File(cli.getOptionValue(SPEARMAN_OUT));
+                }
+
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);
                 PValueCalculator calculator = new PValueCalculator(new File(spearman));
+                ArrayList<DocumentPair> humanScores = calculator.readHumanScores();
+                ArrayList<DocumentPair> esaScores = calculator.getEsaScores(humanScores, similarityTool);
+                float spearmanScore = (float) calculator.getSpearmanCorrelation(humanScores, esaScores);
+
+                if (outputFile != null) {
+                    DocumentPairCsvWriter csvWriter = new DocumentPairCsvWriter(outputFile);
+                    csvWriter.writePairs(esaScores);
+                }
+
                 System.out.println("Calculating P-value using Spearman correlation...");
                 System.out.println("----------------------------------------");
-                System.out.println("p-value:\t" + calculator.getSpearmanCorrelation(similarityTool));
+                System.out.println("p-value:\t" + spearmanScore);
                 System.out.println("----------------------------------------");
             }
 

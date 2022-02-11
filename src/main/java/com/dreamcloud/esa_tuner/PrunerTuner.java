@@ -42,7 +42,6 @@ public class PrunerTuner {
 
         int vectorLimitStart = options.getStartingVectorLimit();
         int vectorLimitEnd = options.getEndingVectorLimit();
-        int vectorLimitStep = options.getVectorLimitStep();
 
         NumberFormat format = NumberFormat.getInstance();
         format.setMaximumFractionDigits(8);
@@ -53,11 +52,11 @@ public class PrunerTuner {
         float bestDropOff = 0;
         float bestVectorLimit = 0;
 
-        int iterationIdx = 0;
-        int iterationCount = (((windowEnd - windowStart) / windowStep) + 1) * (int) (((dropOffEnd - dropOffStart) / dropOffStep) + 1);
-
         //Tuning the window size and dropoff
         if (windowStart != windowEnd || dropOffStart != dropOffEnd) {
+            int iterationIdx = 0;
+            int iterationCount = (((windowEnd - windowStart) / windowStep) + 1) * (int) (((dropOffEnd - dropOffStart) / dropOffStep) + 1);
+
             while (windowStart <= windowEnd) {
                 dropOffStart = initialDropOffStart;
                 ArrayList<Double> lastScores = new ArrayList<>();
