@@ -10,24 +10,41 @@ import com.dreamcloud.esa_core.vectorizer.TextVectorizer;
 import com.dreamcloud.esa_core.vectorizer.VectorBuilder;
 import com.dreamcloud.esa_core.vectorizer.VectorizationOptions;
 import com.dreamcloud.esa_core.vectorizer.Vectorizer;
+import com.dreamcloud.esa_score.analysis.CollectionInfo;
 import com.dreamcloud.esa_score.analysis.TfIdfAnalyzer;
 import com.dreamcloud.esa_score.analysis.TfIdfOptions;
 import com.dreamcloud.esa_score.analysis.TfIdfStrategyFactory;
 import com.dreamcloud.esa_score.analysis.strategy.TfIdfStrategy;
 import com.dreamcloud.esa_score.cli.FileSystemScoringReader;
 import com.dreamcloud.esa_score.cli.TfIdfOptionsReader;
+import com.dreamcloud.esa_score.fs.DocumentScoreDataReader;
+import com.dreamcloud.esa_score.fs.DocumentScoreMemoryReader;
+import com.dreamcloud.esa_score.fs.TermIndex;
+import com.dreamcloud.esa_score.fs.TermIndexReader;
+import com.dreamcloud.esa_score.score.DocumentNameResolver;
+import com.dreamcloud.esa_score.score.DocumentScoreReader;
+import com.dreamcloud.esa_score.score.ScoreReader;
 import com.dreamcloud.esa_tuner.cli.TuningOptionsReader;
+import com.dreamcloud.esa_tuner.term.TermComparison;
+import com.dreamcloud.esa_tuner.term.TermComparisonStats;
 import org.apache.commons.cli.*;
+import org.apache.lucene.analysis.Analyzer;
+import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class Main {
     private static String SPEARMAN_OUT = "spearman-out";
     private static String SPEARMAN_COMPARE = "spearman-compare";
+    private static String TERM_COMPARE = "term-compare";
 
     public static void main(String[] args) {
         Options options = new Options();
@@ -56,6 +73,11 @@ public class Main {
         spearmanCompareOption.setRequired(false);
         spearmanCompareOption.setArgs(2);
         options.addOption(spearmanCompareOption);
+
+        Option termCompareOption = new Option(null, TERM_COMPARE, true, "term, spearman csv 1, spearman csv 2");
+        termCompareOption.setRequired(false);
+        termCompareOption.setArgs(3);
+        options.addOption(termCompareOption);
 
         //Pearson correlations to get tool p-value
         Option pearsonOption = new Option(null, "pearson", true, "correlation file [document file] / Calculates Pearson correlations to get the p-value of the tool");
@@ -88,9 +110,6 @@ public class Main {
 
             TfIdfStrategyFactory tfIdfFactory = new TfIdfStrategyFactory();
             TfIdfStrategy tfIdfStrategy = tfIdfFactory.getStrategy(tfIdfOptions);
-            TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
-            VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
-            TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
             if (cli.hasOption("spearman")) {
                 String spearman = cli.getOptionValue("spearman");
@@ -102,6 +121,10 @@ public class Main {
                 if (cli.hasOption(SPEARMAN_OUT)) {
                     outputFile = new File(cli.getOptionValue(SPEARMAN_OUT));
                 }
+
+                TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
+                VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+                TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);
                 PValueCalculator calculator = new PValueCalculator(new File(spearman));
@@ -128,6 +151,11 @@ public class Main {
                     pearsonFile = "./src/data/en-lp50.csv";
                     documentFile = new File("./src/data/en-lp50-documents.csv");
                 }
+
+                TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
+                VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+                TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
+
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);
                 PValueCalculator calculator = new PValueCalculator(new File(pearsonFile), documentFile);
                 System.out.println("Calculating P-value using Pearson correlation...");
@@ -151,6 +179,58 @@ public class Main {
                 }
             }
 
+            else if(cli.hasOption(TERM_COMPARE)) {
+                String[] arguments = cli.getOptionValues(TERM_COMPARE);
+
+                //Process term
+                String term = arguments[0];
+                Analyzer analyzer = new EsaAnalyzer(analyzerOptions);
+                TokenStream tokens = analyzer.tokenStream("text", term);
+                CharTermAttribute termAttribute = tokens.addAttribute(CharTermAttribute.class);
+                try {
+                    tokens.reset();
+                    while(tokens.incrementToken()) {
+                        term = termAttribute.toString();
+                    }
+                    tokens.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    System.exit(1);
+                }
+
+                //Build index1
+                File idTitles1 = new File(arguments[1] + "/id-titles.txt");
+                File termIndexFile1 = new File(arguments[1] + "/term-index.dc");
+                File documentScoresFile1 = new File(arguments[1] + "/document-scores.dc");
+                TermIndexReader termIndexReader1 = new TermIndexReader();
+                termIndexReader1.open(termIndexFile1);
+                TermIndex termIndex1 = termIndexReader1.readIndex();
+                termIndexReader1.close();
+                CollectionInfo collectionInfo1 = new CollectionInfo(termIndex1.getDocumentCount(), termIndex1.getAverageDocumentLength(), termIndex1.getDocumentFrequencies());
+
+                DocumentScoreDataReader scoreDataReader1 = new DocumentScoreMemoryReader(documentScoresFile1);
+                DocumentScoreReader scoreReader1 = new ScoreReader(termIndex1, scoreDataReader1);
+
+
+                //Build index2
+                File idTitles2 = new File(arguments[2] + "/id-titles.txt");
+                File termIndexFile2 = new File(arguments[2] + "/term-index.dc");
+                File documentScoresFile2 = new File(arguments[2] + "/document-scores.dc");
+                TermIndexReader termIndexReader2 = new TermIndexReader();
+                termIndexReader2.open(termIndexFile2);
+                TermIndex termIndex2 = termIndexReader2.readIndex();
+                termIndexReader2.close();
+                CollectionInfo collectionInfo2 = new CollectionInfo(termIndex2.getDocumentCount(), termIndex2.getAverageDocumentLength(), termIndex2.getDocumentFrequencies());
+
+                DocumentScoreDataReader scoreDataReader2 = new DocumentScoreMemoryReader(documentScoresFile2);
+                DocumentScoreReader scoreReader2 = new ScoreReader(termIndex2, scoreDataReader2);
+
+                TermComparison termComparison = new TermComparison(term);
+                TermComparisonStats termComparisonStats = termComparison.compare(collectionInfo1, scoreReader1, collectionInfo2, scoreReader2);
+
+                termComparisonStats.print(idTitles1, idTitles2);
+            }
+
             else if (cli.hasOption("tune")) {
                 File spearmanFile = new File("./src/data/en-wordsim353.csv");
                 File pearsonFile = new File("./src/data/en-lp50.csv");
@@ -162,6 +242,10 @@ public class Main {
                 } else {
                     pValueCalculator = new PValueCalculator(pearsonFile, documentFile);
                 }
+
+                TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
+                VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+                TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);
                 PrunerTuner tuner = new PrunerTuner(similarityTool);
