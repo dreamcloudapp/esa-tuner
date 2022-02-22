@@ -6,10 +6,7 @@ import com.dreamcloud.esa_core.analyzer.TokenizerFactory;
 import com.dreamcloud.esa_core.cli.AnalyzerOptionsReader;
 import com.dreamcloud.esa_core.cli.VectorizationOptionsReader;
 import com.dreamcloud.esa_core.similarity.DocumentSimilarity;
-import com.dreamcloud.esa_core.vectorizer.TextVectorizer;
-import com.dreamcloud.esa_core.vectorizer.VectorBuilder;
-import com.dreamcloud.esa_core.vectorizer.VectorizationOptions;
-import com.dreamcloud.esa_core.vectorizer.Vectorizer;
+import com.dreamcloud.esa_core.vectorizer.*;
 import com.dreamcloud.esa_score.analysis.CollectionInfo;
 import com.dreamcloud.esa_score.analysis.TfIdfAnalyzer;
 import com.dreamcloud.esa_score.analysis.TfIdfOptions;
@@ -243,8 +240,14 @@ public class Main {
                     pValueCalculator = new PValueCalculator(pearsonFile, documentFile);
                 }
 
+                pValueCalculator.setOutputWordPairs(false);
+
                 TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
-                VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+                DocumentScoreVectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+
+                BackrubLinkMapReader linkMapReader = new BackrubLinkMapReader();
+                linkMapReader.parse(new File("../esa-wiki/index/2022s/link-map.xml.bz2"));
+                vectorBuilder = new BackrubVectorBuilder(vectorBuilder, linkMapReader.getLinkMap());
                 TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);

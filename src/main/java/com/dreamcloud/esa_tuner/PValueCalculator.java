@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 public class PValueCalculator {
+    private boolean outputWordPairs = true;
     private final File file;
     private final File documentFile;
     private ArrayList<DocumentPair> humanSimilarityList;
@@ -21,6 +22,10 @@ public class PValueCalculator {
 
     public PValueCalculator(File file) {
         this(file, null);
+    }
+
+    public void setOutputWordPairs(boolean outputWordPairs) {
+        this.outputWordPairs = outputWordPairs;
     }
 
     public double getPearsonCorrelation(DocumentSimilarity similarity) throws Exception {
@@ -56,7 +61,10 @@ public class PValueCalculator {
 
             String sourceDesc = docSim.getDoc1().substring(0, Math.min(16, docSim.getDoc1().length()));
             String compareDesc = docSim.getDoc2().substring(0, Math.min(16, docSim.getDoc2().length()));
-            System.out.println("doc " + i + "\t ('" + sourceDesc + "', '" + compareDesc + "'):\t" + score);
+
+            if (outputWordPairs) {
+                System.out.println("doc " + i + "\t ('" + sourceDesc + "', '" + compareDesc + "'):\t" + score);
+            }
         }
         return esaScoreList;
     }

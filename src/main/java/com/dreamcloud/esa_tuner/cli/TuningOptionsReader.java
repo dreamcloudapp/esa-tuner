@@ -56,13 +56,13 @@ public class TuningOptionsReader {
 
         //Window drop
         if (cli.hasOption(WINDOW_DROP_START)) {
-            options.setStartingWindowDrop(Integer.parseInt(cli.getOptionValue(WINDOW_DROP_START)));
+            options.setStartingWindowDrop(Float.parseFloat(cli.getOptionValue(WINDOW_DROP_START)));
         }
         if (cli.hasOption(WINDOW_DROP_END)) {
-            options.setEndingWindowDrop(Integer.parseInt(cli.getOptionValue(WINDOW_DROP_END)));
+            options.setEndingWindowDrop(Float.parseFloat(cli.getOptionValue(WINDOW_DROP_END)));
         }
-        if (cli.hasOption(WINDOW_DROP_START)) {
-            options.setWindowDropStep(Integer.parseInt(cli.getOptionValue(WINDOW_DROP_START)));
+        if (cli.hasOption(WINDOW_DROP_STEP)) {
+            options.setWindowDropStep(Float.parseFloat(cli.getOptionValue(WINDOW_DROP_STEP)));
         }
 
         //Vector limit
