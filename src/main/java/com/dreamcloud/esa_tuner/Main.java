@@ -7,6 +7,9 @@ import com.dreamcloud.esa_core.cli.AnalyzerOptionsReader;
 import com.dreamcloud.esa_core.cli.VectorizationOptionsReader;
 import com.dreamcloud.esa_core.similarity.DocumentSimilarity;
 import com.dreamcloud.esa_core.vectorizer.*;
+import com.dreamcloud.esa_core.vectorizer.scoreMod.BackrubScoreMod;
+import com.dreamcloud.esa_core.vectorizer.scoreMod.PruneScoreMod;
+import com.dreamcloud.esa_core.vectorizer.scoreMod.VectorLimitScoreMod;
 import com.dreamcloud.esa_score.analysis.CollectionInfo;
 import com.dreamcloud.esa_score.analysis.TfIdfAnalyzer;
 import com.dreamcloud.esa_score.analysis.TfIdfOptions;
@@ -21,6 +24,7 @@ import com.dreamcloud.esa_score.fs.TermIndexReader;
 import com.dreamcloud.esa_score.score.DocumentNameResolver;
 import com.dreamcloud.esa_score.score.DocumentScoreReader;
 import com.dreamcloud.esa_score.score.ScoreReader;
+import com.dreamcloud.esa_score.score.TfIdfScore;
 import com.dreamcloud.esa_tuner.cli.TuningOptionsReader;
 import com.dreamcloud.esa_tuner.term.TermComparison;
 import com.dreamcloud.esa_tuner.term.TermComparisonStats;
@@ -33,15 +37,13 @@ import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 public class Main {
     private static String SPEARMAN_OUT = "spearman-out";
     private static String SPEARMAN_COMPARE = "spearman-compare";
     private static String TERM_COMPARE = "term-compare";
+    private static String PRINT_VECTOR = "print-vector";
 
     public static void main(String[] args) {
         Options options = new Options();
@@ -56,6 +58,11 @@ public class Main {
         vectorizationOptionsReader.addOptions(options);
         TuningOptionsReader tuningOptionsReader = new TuningOptionsReader();
         tuningOptionsReader.addOptions(options);
+
+        //Get vector for term/doc
+        Option printVectorOption = new Option(null, PRINT_VECTOR, true, "term/doc (string)");
+        printVectorOption.setRequired(false);
+        options.addOption(printVectorOption);
 
         //Spearman correlations to get tool p-value
         Option spearmanOption = new Option(null, "spearman", true, "correlation file / Calculates Spearman correlations to get the p-value of the tool");
@@ -108,7 +115,36 @@ public class Main {
             TfIdfStrategyFactory tfIdfFactory = new TfIdfStrategyFactory();
             TfIdfStrategy tfIdfStrategy = tfIdfFactory.getStrategy(tfIdfOptions);
 
-            if (cli.hasOption("spearman")) {
+            if (cli.hasOption(PRINT_VECTOR)) {
+                String documentText = cli.getOptionValue(PRINT_VECTOR);
+
+                TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
+                VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+
+                BackrubLinkMapReader linkMapReader = new BackrubLinkMapReader();
+                linkMapReader.parse(new File("../esa-wiki/index/2022s/link-map.xml.bz2"));
+                vectorBuilder.addScoreMod(new BackrubScoreMod(linkMapReader.getLinkMap()));
+
+                if (vectorOptions.getVectorLimit() > 0) {
+                    vectorBuilder.addScoreMod(new VectorLimitScoreMod(vectorOptions.getVectorLimit()));
+                }
+                if (vectorOptions.getWindowSize() > 0) {
+                    vectorBuilder.addScoreMod(new PruneScoreMod(vectorOptions));
+                }
+
+                TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
+                DocumentScoreVector vector = textVectorizer.vectorize(documentText);
+                Vector<TfIdfScore> scores = new Vector<>();
+                for (Integer documentId: vector.getDocumentScores().keySet()) {
+                    scores.add(new TfIdfScore(documentId, null, vector.getScore(documentId)));
+                }
+                scores.sort((TfIdfScore s1, TfIdfScore s2) -> Double.compare(s2.getScore(), s1.getScore()));
+                for (TfIdfScore score: scores) {
+                    System.out.println(DocumentNameResolver.getTitle(score.getDocument()) + ":\t" + score.getScore());
+                }
+            }
+
+            else if (cli.hasOption("spearman")) {
                 String spearman = cli.getOptionValue("spearman");
                 if ("en-wordsim353".equals(spearman)) {
                     spearman = "./src/data/en-wordsim353.csv";
@@ -121,6 +157,18 @@ public class Main {
 
                 TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
                 VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+
+                /*BackrubLinkMapReader linkMapReader = new BackrubLinkMapReader();
+                linkMapReader.parse(new File("../esa-wiki/index/2022s/link-map.xml.bz2"));
+                vectorBuilder.addScoreMod(new BackrubScoreMod(linkMapReader.getLinkMap()));*/
+
+                if (vectorOptions.getVectorLimit() > 0) {
+                    vectorBuilder.addScoreMod(new VectorLimitScoreMod(vectorOptions.getVectorLimit()));
+                }
+                if (vectorOptions.getWindowSize() > 0) {
+                    vectorBuilder.addScoreMod(new PruneScoreMod(vectorOptions));
+                }
+
                 TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);
@@ -151,6 +199,14 @@ public class Main {
 
                 TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
                 VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+
+                if (vectorOptions.getVectorLimit() > 0) {
+                    vectorBuilder.addScoreMod(new VectorLimitScoreMod(vectorOptions.getVectorLimit()));
+                }
+                if (vectorOptions.getWindowSize() > 0) {
+                    vectorBuilder.addScoreMod(new PruneScoreMod(vectorOptions));
+                }
+
                 TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);
@@ -243,11 +299,14 @@ public class Main {
                 pValueCalculator.setOutputWordPairs(false);
 
                 TfIdfAnalyzer tfIdfAnalyzer = new TfIdfAnalyzer(tfIdfStrategy, new EsaAnalyzer(analyzerOptions), fileSystemScoringReader.getCollectionInfo());
-                DocumentScoreVectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
+                VectorBuilder vectorBuilder = new VectorBuilder(fileSystemScoringReader.getScoreReader(), fileSystemScoringReader.getCollectionInfo(), tfIdfAnalyzer, analyzerOptions.getPreprocessor(), vectorOptions);
 
                 BackrubLinkMapReader linkMapReader = new BackrubLinkMapReader();
                 linkMapReader.parse(new File("../esa-wiki/index/2022s/link-map.xml.bz2"));
-                vectorBuilder = new BackrubVectorBuilder(vectorBuilder, linkMapReader.getLinkMap());
+                //vectorBuilder.addScoreMod(new BackrubScoreMod(linkMapReader.getLinkMap()));
+                vectorBuilder.addScoreMod(new PruneScoreMod(vectorOptions));
+                vectorBuilder.addScoreMod(new VectorLimitScoreMod(vectorOptions.getVectorLimit()));
+
                 TextVectorizer textVectorizer = new Vectorizer(vectorBuilder);
 
                 DocumentSimilarity similarityTool = new DocumentSimilarity(textVectorizer);

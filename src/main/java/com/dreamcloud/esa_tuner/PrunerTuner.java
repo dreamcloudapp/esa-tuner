@@ -71,6 +71,8 @@ public class PrunerTuner {
                     vectorizationOptions.setWindowDrop(dropOffStart);
                     //hacky shmack
                     VectorBuilder.cache.clear();
+
+
                     double score;
                     if ("spearman".equals(options.getType())) {
                         score = pValueCalculator.getSpearmanCorrelation(similarity);
